@@ -1,0 +1,274 @@
+Author: Samuel Thibault <sthibault@debian.org>
+Description: fix FTBFS on the Hurd
+Bug-Debian: http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=654974
+
+--- a/libmenu/menu_filesel.c
++++ b/libmenu/menu_filesel.c
+@@ -16,6 +16,9 @@
+  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  */
+ 
++#ifdef __GNU__
++#define _GNU_SOURCE
++#endif
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <dirent.h>
+@@ -418,7 +421,11 @@ static void clos(menu_t* menu) {
+ static int open_fs(menu_t* menu, char* args) {
+   char *path = mpriv->path;
+   int r = 0;
++#ifdef __GNU__
++  char *wd, *b = NULL;
++#else
+   char wd[PATH_MAX+1], b[PATH_MAX+1];
++#endif
+   args = NULL; // Warning kill
+ 
+   menu->draw = menu_list_draw;
+@@ -447,7 +454,11 @@ static int open_fs(menu_t* menu, char* a
+     }
+   }
+ 
++#ifdef __GNU__
++  wd = get_current_dir_name();
++#else
+   getcwd(wd,PATH_MAX);
++#endif
+   if (!path || path[0] == '\0') {
+ #if 0
+     char *slash = NULL;
+@@ -466,13 +477,24 @@ static int open_fs(menu_t* menu, char* a
+       path = wd;
+   }
+   if (path[0] != '/') {
++#ifdef __GNU__
++    if(path[strlen(path)-1] != '/')
++      asprintf(&b,"%s/%s/",wd,path);
++    else
++      asprintf(&b,"%s/%s",wd,path);
++#else
+     if(path[strlen(path)-1] != '/')
+       snprintf(b,sizeof(b),"%s/%s/",wd,path);
+     else
+       snprintf(b,sizeof(b),"%s/%s",wd,path);
++#endif
+     path = b;
+   } else if (path[strlen(path)-1]!='/') {
++#ifdef __GNU__
++    asprintf(&b,"%s/",path);
++#else
+     sprintf(b,"%s/",path);
++#endif
+     path = b;
+   }
+   if (menu_chroot && menu_chroot[0] == '/') {
+@@ -483,13 +505,22 @@ static int open_fs(menu_t* menu, char* a
+       if (menu_chroot[l] == '/')
+         path = menu_chroot;
+       else {
++#ifdef __GNU__
++        asprintf(&b,"%s/",menu_chroot);
++#else
+         sprintf(b,"%s/",menu_chroot);
++#endif
+         path = b;
+       }
+     }
+   }
+   r = open_dir(menu,path);
+ 
++#ifdef __GNU__
++  free(wd);
++  free(b);
++#endif
++
+   return r;
+ }
+ 
+--- a/libmpdemux/mf.c
++++ b/libmpdemux/mf.c
+@@ -16,6 +16,9 @@
+  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  */
+ 
++#ifdef __GNU__
++#define _GNU_SOURCE
++#endif
+ #include <ctype.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -64,8 +67,13 @@ mf_t* open_mf(char * filename){
+    FILE *lst_f=fopen(filename + 1,"r");
+    if ( lst_f )
+     {
++#ifdef __GNU__
++     fname=NULL;
++     while ( getline( &fname, 0, lst_f ) >= 0 )
++#else
+      fname=malloc(PATH_MAX);
+      while ( fgets( fname,PATH_MAX,lst_f ) )
++#endif
+       {
+        /* remove spaces from end of fname */
+        char *t=fname + strlen( fname ) - 1;
+@@ -80,6 +88,10 @@ mf_t* open_mf(char * filename){
+          mf->names[mf->nr_of_files]=strdup( fname );
+          mf->nr_of_files++;
+         }
++#ifdef __GNU__
++       free( fname );
++       fname=NULL;
++#endif
+       }
+       fclose( lst_f );
+ 
+--- a/stream/stream_bd.c
++++ b/stream/stream_bd.c
+@@ -19,6 +19,10 @@
+  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+  */
+ 
++#ifdef __GNU__
++#define _GNU_SOURCE
++#endif
++
+ #include <stdio.h>
+ #include <limits.h>
+ #include <ctype.h>
+@@ -145,7 +149,11 @@ static void id2str(const uint8_t *id, in
+ static int find_vuk(struct bd_priv *bd, const uint8_t discid[20])
+ {
+     char line[1024];
++#ifdef __GNU__
++    char *filename;
++#else
+     char filename[PATH_MAX];
++#endif
+     const char *home;
+     int vukfound = 0;
+     stream_t *file;
+@@ -153,13 +161,23 @@ static int find_vuk(struct bd_priv *bd,
+ 
+     // look up discid in KEYDB.cfg to get VUK
+     home = getenv("HOME");
++#ifdef __GNU__
++    asprintf(&filename, "%s/.dvdcss/KEYDB.cfg", home);
++#else
+     snprintf(filename, sizeof(filename), "%s/.dvdcss/KEYDB.cfg", home);
++#endif
+     file = open_stream(filename, NULL, NULL);
+     if (!file) {
+         mp_msg(MSGT_OPEN,MSGL_ERR,
+                "Cannot open VUK database file %s\n", filename);
++#ifdef __GNU__
++        free(filename);
++#endif
+         return 0;
+     }
++#ifdef __GNU__
++    free(filename);
++#endif
+     id2str(discid, 20, idstr);
+     while (stream_read_line(file, line, sizeof(line), 0)) {
+         char *vst;
+@@ -204,23 +222,40 @@ static int bd_get_uks(struct bd_priv *bd
+     struct AVAES *a;
+     struct AVSHA *asha;
+     stream_t *file;
++#ifdef __GNU__
++    char *filename;
++#else
+     char filename[PATH_MAX];
++#endif
+     uint8_t discid[20];
+     char idstr[ID_STR_LEN];
+ 
++#ifdef __GNU__
++    asprintf(&filename, BD_UKF_PATH, bd->device);
++#else
+     snprintf(filename, sizeof(filename), BD_UKF_PATH, bd->device);
++#endif
+     file = open_stream(filename, NULL, NULL);
+     if (!file) {
+         mp_msg(MSGT_OPEN, MSGL_ERR,
+                "Cannot open file %s to get UK and DiscID\n", filename);
++#ifdef __GNU__
++        free(filename);
++#endif
+         return 0;
+     }
+     file_size = file->end_pos;
+     if (file_size <= 0 || file_size > 10 * 1024* 1024) {
+         mp_msg(MSGT_OPEN, MSGL_ERR, "File %s too large\n", filename);
+         free_stream(file);
++#ifdef __GNU__
++        free(filename);
++#endif
+         return 0;
+     }
++#ifdef __GNU__
++    free(filename);
++#endif
+     buf = av_malloc(file_size);
+     stream_read(file, buf, file_size);
+     free_stream(file);
+@@ -411,15 +446,29 @@ static void get_clipinf(struct bd_priv *
+ {
+     int i;
+     int langmap_offset, index_offset, end_offset;
++#ifdef __GNU__
++    char *filename;
++#else
+     char filename[PATH_MAX];
++#endif
+     stream_t *file;
+ 
++#ifdef __GNU__
++    asprintf(&filename, BD_CLIPINF_PATH, bd->device, bd->title);
++#else
+     snprintf(filename, sizeof(filename), BD_CLIPINF_PATH, bd->device, bd->title);
++#endif
+     file = open_stream(filename, NULL, NULL);
+     if (!file) {
+         mp_msg(MSGT_OPEN, MSGL_ERR, "Cannot open clipinf %s\n", filename);
++#ifdef __GNU__
++        free(filename);
++#endif
+         return;
+     }
++#ifdef __GNU__
++    free(filename);
++#endif
+     if (stream_read_qword(file) != AV_RB64("HDMV0200")) {
+         mp_msg(MSGT_OPEN, MSGL_ERR, "Unknown clipinf format\n");
+         return;
+@@ -453,7 +502,11 @@ static void get_clipinf(struct bd_priv *
+ 
+ static int bd_stream_open(stream_t *s, int mode, void* opts, int* file_format)
+ {
++#ifdef __GNU__
++    char *filename;
++#else
+     char filename[PATH_MAX];
++#endif
+ 
+     struct stream_priv_s* p = opts;
+     struct bd_priv *bd = calloc(1, sizeof(*bd));
+@@ -489,9 +542,16 @@ static int bd_stream_open(stream_t *s, i
+     // set up AES key from uk
+     av_aes_init(bd->aeseed, bd->uks.keys[0].u8, 128, 0);
+ 
++#ifdef __GNU__
++    asprintf(&filename, BD_M2TS_PATH, bd->device, bd->title);
++#else
+     snprintf(filename, sizeof(filename), BD_M2TS_PATH, bd->device, bd->title);
++#endif
+     mp_msg(MSGT_OPEN, MSGL_STATUS, "Opening %s\n", filename);
+     bd->title_file = open_stream(filename, NULL, NULL);
++#ifdef __GNU__
++    free(filename);
++#endif
+     if (!bd->title_file)
+         return STREAM_ERROR;
+     s->end_pos = bd->title_file->end_pos;

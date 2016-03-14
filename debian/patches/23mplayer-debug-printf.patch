@@ -1,0 +1,17 @@
+From: Reinhard Tartler <siretart@tauware.de>
+Subject: in case of crash, suggest installing package mplayer-dbg for debugging symbols
+Forwarded: not-needed
+
+--- a/mplayer.c
++++ b/mplayer.c
+@@ -846,6 +846,10 @@ static void exit_sighandler(int x)
+             mp_msg(MSGT_CPLAYER, MSGL_FATAL, MSGTR_Exit_SIGSEGV_SIGFPE);
+         default:
+             mp_msg(MSGT_CPLAYER, MSGL_FATAL, MSGTR_Exit_SIGCRASH);
++            mp_msg(MSGT_CPLAYER,MSGL_FATAL,
++                   " [ This binary of MPlayer in Debian is currently compiled with\n"
++                   "   '--enable-debug'; the debugging symbols are in the package\n"
++                   "   'mplayer-dbg'.]\n");
+ #ifdef CONFIG_CRASH_DEBUG
+             if (crash_debug) {
+                 int gdb_pid;
