@@ -26,7 +26,6 @@ DOCS/xml/xml.mak
 DOCS/xml/*/main.xml
 drivers/mga_vid_test
 drivers/tdfx_vid_test
-ffmpeg/
 libdvdnav/
 libdvdread4/
 libvo/aspecttest
